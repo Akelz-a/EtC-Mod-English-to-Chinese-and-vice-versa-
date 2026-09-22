@@ -1,0 +1,38 @@
+{
+	"schemaVersion": 1,
+	"id": "etc-english-to-chinese-and-vice-versa",
+	"version": "${version}",
+	"name": "EtC (English to Chinese and vice versa))",
+	"description": "This is an example description! Tell everyone what your mod is about!",
+	"authors": [
+		"Me!"
+	],
+	"contact": {
+		"homepage": "https://fabricmc.net/",
+		"sources": "https://github.com/FabricMC/fabric-example-mod"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/etc-english-to-chinese-and-vice-versa/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"akelza.etctranslate.mod.EtCEnglishToChineseAndViceVersa"
+		],
+		"client": [
+			"akelza.etctranslate.mod.client.EtCEnglishToChineseAndViceVersaClient"
+		]
+	},
+	"mixins": [
+		"etc-english-to-chinese-and-vice-versa.mixins.json",
+		{
+			"config": "etc-english-to-chinese-and-vice-versa.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
