@@ -1,77 +1,96 @@
 package akelza.etctranslate.mod;
 
 import net.fabricmc.api.ModInitializer;
-
-import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.minecraft.resources.Identifier;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.BufferedReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 
 public class EtCEnglishToChineseAndViceVersa implements ModInitializer {
+
 	public static final String MOD_ID = "etc-english-to-chinese-and-vice-versa";
-
-	// This logger is used to write text to the console and the log file.
-	// It is considered best practice to use your mod id as the logger's name.
-	// That way, it's clear which mod wrote info, warnings, and errors.
 	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
-	private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
-
-	public static String translateWithOllama(String textToTranslate){
-		//secure if Ollama fails
-		try{
-			String targetLanguage = "Chinese";
-			//JSON letter for the AI
-			String jsonInputStrings = "{"
-					+ "\"model\": \"qwen2.5:3b\","
-					+ "\"prompt\": \"Translate this Minecraft chat text to " + targetLanguage + ". Output ONLY the translation, nothing else, preserve player names and gaming slang: " + textToTranslate + "\","
-					+ "\"stream\": false"
-					+ "}";
-			// HTTP request
-			HttpRequest request = HttpRequest.newBuilder()
-					.uri(URI.create("http://localhost:11434/api/generate"))
-					.header("Content-Type", "application/json")
-					.POST(HttpRequest.BodyPublishers.ofString(jsonInputStrings))
-					.build();
-
-			HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
-
-			//making JSON an object
-			com.google.gson.JsonObject jsonObject = com.google.gson.JsonParser.parseString(response.body()).getAsJsonObject();
-			return jsonObject.get("response").getAsString();
-		} catch (Exception e) {
-			LOGGER.error("An error occured while trying to connect to Ollama: " + e.getMessage());
-			return "Translation error";
-		}
-	}
 
 	@Override
 	public void onInitialize() {
-		// This code runs as soon as Minecraft is in a mod-load-ready state.
-		// However, some things (like resources) may still be uninitialized.
-		// Proceed with mild caution.
-
-		LOGGER.info("Hello Fabric world!");
-		ClientReceiveMessageEvents.CHAT.register((message, signedMessage, sender, params, instant) -> {
-			if (signedMessage != null) {
-				String originalText = signedMessage.signedContent();
-
-				String translatedText = translateWithOllama(originalText);
-				LOGGER.info("Original: [" + originalText + "] ----> Translation: [" + translatedText + "]");
-
-
-				//System.out.println("Mod caught a chat message: " + originalText);
-			}
-		});
+		// main initialization, the listeners are in client file
+		LOGGER.info("EtC Mod main initialization complete!");
 	}
 
-	public static Identifier id(String path) {
-		return Identifier.fromNamespaceAndPath(MOD_ID, path);
+	// Универсальный метод перевода с двумя параметрами
+	public static String translateWithOllama(String textToTranslate, String targetLanguage) {
+		try {
+			// special characaters for json
+			String safeText = textToTranslate.replace("\\", "\\\\")
+					.replace("\"", "\\\"")
+					.replace("\n", " ");
+
+			// prompt
+			String systemInstruction = "You are a professional translator for Minecraft chat. "
+					+ "Translate the user message strictly into " + targetLanguage + ". "
+					+ "Do not leave any raw English words in the output unless it is a proper noun or player name (like Dream). "
+					+ "Correct typos in slang (e.g. 'leep' -> 'like') and translate naturally into " + targetLanguage + ". "
+					+ "Output ONLY the translation, nothing else.";
+
+			// adding options, like temp (its for creativity)
+			String jsonInputStrings = "{"
+					+ "\"model\": \"qwen2.5:3b\","
+					+ "\"messages\": ["
+					+ "  {\"role\": \"system\", \"content\": \"" + systemInstruction + "\"},"
+					+ "  {\"role\": \"user\", \"content\": \"" + safeText + "\"}"
+					+ "],"
+					+ "\"options\": {"
+					+ "  \"temperature\": 0.1,"
+					+ "  \"top_p\": 0.2"
+					+ "},"
+					+ "\"stream\": false"
+					+ "}";
+
+			URL url = new URL("http://localhost:11434/api/chat");
+			HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+			conn.setRequestMethod("POST");
+			conn.setRequestProperty("Content-Type", "application/json; utf-8");
+			conn.setDoOutput(true);
+
+			try (OutputStream os = conn.getOutputStream()) {
+				byte[] input = jsonInputStrings.getBytes(StandardCharsets.UTF_8);
+				os.write(input, 0, input.length);
+			}
+
+			StringBuilder response = new StringBuilder();
+			try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+				String responseLine;
+				while ((responseLine = br.readLine()) != null) {
+					response.append(responseLine.trim());
+				}
+			}
+
+			String json = response.toString();
+			int contentIndex = json.indexOf("\"content\":");
+			if (contentIndex != -1) {
+				int startIndex = json.indexOf("\"", contentIndex + 10) + 1;
+				int endIndex = json.indexOf("\"", startIndex);
+				if (startIndex > 0 && endIndex > startIndex) {
+					String result = json.substring(startIndex, endIndex)
+							.replace("\\n", "\n")
+							.replace("\\\"", "\"")
+							.replace("\\\\", "\\")
+							.trim();
+
+					return result.isEmpty() ? textToTranslate : result;
+				}
+			}
+			return textToTranslate;
+
+		} catch (Exception e) {
+			e.printStackTrace();
+			return textToTranslate;
+		}
 	}
 }
